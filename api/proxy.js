@@ -8,22 +8,33 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', '*');
 
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
-  if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return; }
 
   try {
-    const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'web-search-2025-03-05'
-      },
-      body
-    });
-    const data = await response.json();
-    res.status(response.status).json(data);
+    // Traer cotizaciones de rava.com
+    const [rAcc, rBon] = await Promise.allSettled([
+      fetch('https://www.rava.com/empresas/cotizaciones.php?formato=json'),
+      fetch('https://www.rava.com/renta-fija/cotizaciones.php?formato=json')
+    ]);
+
+    const precios = {};
+
+    if (rAcc.status === 'fulfilled' && rAcc.value.ok) {
+      const data = await rAcc.value.json();
+      Object.entries(data).forEach(([tk, v]) => {
+        const px = parseFloat(v?.ultimo || v?.cierre || v?.price || 0);
+        if (px > 0) precios[tk.toUpperCase()] = px;
+      });
+    }
+
+    if (rBon.status === 'fulfilled' && rBon.value.ok) {
+      const data = await rBon.value.json();
+      Object.entries(data).forEach(([tk, v]) => {
+        const px = parseFloat(v?.ultimo || v?.cierre || v?.price || 0);
+        if (px > 0) precios[tk.toUpperCase()] = px;
+      });
+    }
+
+    res.status(200).json(precios);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
