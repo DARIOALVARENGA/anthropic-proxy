@@ -10,32 +10,20 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
 
   try {
-    // Traer cotizaciones de rava.com
-    const [rAcc, rBon] = await Promise.allSettled([
-      fetch('https://www.rava.com/empresas/cotizaciones.php?formato=json'),
-      fetch('https://www.rava.com/renta-fija/cotizaciones.php?formato=json')
-    ]);
-
+    const r = await fetch('https://bolsar.info/Cotizaciones/getCotizaciones.php?panel=general', {
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+    });
+    const text = await r.text();
+    console.log('bolsar response:', text.substring(0, 200));
+    const data = JSON.parse(text);
     const precios = {};
-
-    if (rAcc.status === 'fulfilled' && rAcc.value.ok) {
-      const data = await rAcc.value.json();
-      Object.entries(data).forEach(([tk, v]) => {
-        const px = parseFloat(v?.ultimo || v?.cierre || v?.price || 0);
-        if (px > 0) precios[tk.toUpperCase()] = px;
-      });
-    }
-
-    if (rBon.status === 'fulfilled' && rBon.value.ok) {
-      const data = await rBon.value.json();
-      Object.entries(data).forEach(([tk, v]) => {
-        const px = parseFloat(v?.ultimo || v?.cierre || v?.price || 0);
-        if (px > 0) precios[tk.toUpperCase()] = px;
-      });
-    }
-
+    (Array.isArray(data) ? data : data.cotizaciones || []).forEach(item => {
+      const tk = (item.simbolo || item.ticker || item.Simbolo || '').toUpperCase();
+      const px = parseFloat(item.ultimo || item.cierre || item.Ultimo || item.Cierre || 0);
+      if (tk && px > 0) precios[tk] = px;
+    });
     res.status(200).json(precios);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: e.message, stack: e.stack });
   }
 }
